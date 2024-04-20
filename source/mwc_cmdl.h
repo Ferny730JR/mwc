@@ -45,12 +45,16 @@ struct mwc_args_info
   const char *lines_help; /**< @brief Count the number of lines in each input file, and write it to standard output. help description.  */
   int words_flag;	/**< @brief Count the number of words in each input file, and write it to standard output. (default=off).  */
   const char *words_help; /**< @brief Count the number of words in each input file, and write it to standard output. help description.  */
+  int threads_arg;	/**< @brief Specify the number of threads to use. (default='0').  */
+  char * threads_orig;	/**< @brief Specify the number of threads to use. original value given at command line.  */
+  const char *threads_help; /**< @brief Specify the number of threads to use. help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
   unsigned int characters_given ;	/**< @brief Whether characters was given.  */
   unsigned int lines_given ;	/**< @brief Whether lines was given.  */
   unsigned int words_given ;	/**< @brief Whether words was given.  */
+  unsigned int threads_given ;	/**< @brief Whether threads was given.  */
 
   char **inputs ; /**< @brief unnamed options (options without names) */
   unsigned inputs_num ; /**< @brief unnamed options number */

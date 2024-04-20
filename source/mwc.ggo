@@ -30,3 +30,9 @@ option "words" w
 "Count the number of words in each input file, and write it to standard output."
 flag
 off
+
+option "threads" t
+"Specify the number of threads to use."
+int
+default="0"
+optional

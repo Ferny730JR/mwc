@@ -24,7 +24,7 @@
 
 #include "mwc_cmdl.h"
 
-const char *mwc_args_info_purpose = "Count the number of lines";
+const char *mwc_args_info_purpose = "Count the number of lines, words, and characters in a file.";
 
 const char *mwc_args_info_usage = "Usage: mwc [OPTIONS] [<file1>] [<file2>]...";
 
@@ -33,16 +33,18 @@ const char *mwc_args_info_versiontext = "";
 const char *mwc_args_info_description = "mwc is a C utility program designed to efficiently count the number of lines,\nwords, and characters contained in a file, or from standard input, to standard\noutput. A line is defined as the number of newline character + 1. A word is\ndefined as a string delimited by whitespace. If multiple files are provided, a\nline containing the counts of the file is outputed to a separate line in\nstandard output, with the specified filename.\nThis program is heavily inspired by the \"wc\" utility. It is not meant as a\nreplacement or improvement, but rather just as a personal exercise for\nmultithreading and concurrency.";
 
 const char *mwc_args_info_help[] = {
-  "  -h, --help        Print help and exit",
-  "  -V, --version     Print version and exit",
-  "  -c, --characters  Count the number of bytes in each input file, and write it\n                      to standard output.  (default=off)",
-  "  -l, --lines       Count the number of lines in each input file, and write it\n                      to standard output.  (default=off)",
-  "  -w, --words       Count the number of words in each input file, and write it\n                      to standard output.  (default=off)",
+  "  -h, --help         Print help and exit",
+  "  -V, --version      Print version and exit",
+  "  -c, --characters   Count the number of bytes in each input file, and write it\n                       to standard output.  (default=off)",
+  "  -l, --lines        Count the number of lines in each input file, and write it\n                       to standard output.  (default=off)",
+  "  -w, --words        Count the number of words in each input file, and write it\n                       to standard output.  (default=off)",
+  "  -t, --threads=INT  Specify the number of threads to use.  (default=`0')",
     0
 };
 
 typedef enum {ARG_NO
   , ARG_FLAG
+  , ARG_INT
 } mwc_cmdline_parser_arg_type;
 
 static
@@ -66,6 +68,7 @@ void clear_given (struct mwc_args_info *args_info)
   args_info->characters_given = 0 ;
   args_info->lines_given = 0 ;
   args_info->words_given = 0 ;
+  args_info->threads_given = 0 ;
 }
 
 static
@@ -75,6 +78,8 @@ void clear_args (struct mwc_args_info *args_info)
   args_info->characters_flag = 0;
   args_info->lines_flag = 0;
   args_info->words_flag = 0;
+  args_info->threads_arg = 0;
+  args_info->threads_orig = NULL;
   
 }
 
@@ -88,6 +93,7 @@ void init_args_info(struct mwc_args_info *args_info)
   args_info->characters_help = mwc_args_info_help[2] ;
   args_info->lines_help = mwc_args_info_help[3] ;
   args_info->words_help = mwc_args_info_help[4] ;
+  args_info->threads_help = mwc_args_info_help[5] ;
   
 }
 
@@ -165,12 +171,22 @@ mwc_cmdline_parser_params_create(void)
   return params;
 }
 
+static void
+free_string_field (char **s)
+{
+  if (*s)
+    {
+      free (*s);
+      *s = 0;
+    }
+}
 
 
 static void
 mwc_cmdline_parser_release (struct mwc_args_info *args_info)
 {
   unsigned int i;
+  free_string_field (&(args_info->threads_orig));
   
   
   for (i = 0; i < args_info->inputs_num; ++i)
@@ -216,6 +232,8 @@ mwc_cmdline_parser_dump(FILE *outfile, struct mwc_args_info *args_info)
     write_into_file(outfile, "lines", 0, 0 );
   if (args_info->words_given)
     write_into_file(outfile, "words", 0, 0 );
+  if (args_info->threads_given)
+    write_into_file(outfile, "threads", args_info->threads_orig, 0);
   
 
   i = EXIT_SUCCESS;
@@ -976,13 +994,25 @@ int update_arg(void *field, char **orig_field,
   case ARG_FLAG:
     *((int *)field) = !*((int *)field);
     break;
+  case ARG_INT:
+    if (val) *((int *)field) = strtol (val, &stop_char, 0);
+    break;
   default:
     break;
   };
 
-	FIX_UNUSED(stop_char);
-			FIX_UNUSED(val);
-	
+  /* check numeric conversion */
+  switch(arg_type) {
+  case ARG_INT:
+    if (val && !(stop_char && *stop_char == '\0')) {
+      fprintf(stderr, "%s: invalid numeric value: %s\n", package_name, val);
+      return 1; /* failure */
+    }
+    break;
+  default:
+    ;
+  };
+
   /* store the original value */
   switch(arg_type) {
   case ARG_NO:
@@ -1057,6 +1087,7 @@ mwc_cmdline_parser_internal (
         { "characters",	0, NULL, 'c' },
         { "lines",	0, NULL, 'l' },
         { "words",	0, NULL, 'w' },
+        { "threads",	1, NULL, 't' },
         { 0,  0, 0, 0 }
       };
 
@@ -1065,7 +1096,7 @@ mwc_cmdline_parser_internal (
       custom_opterr = opterr;
       custom_optopt = optopt;
 
-      c = custom_getopt_long (argc, argv, "hVclw", long_options, &option_index);
+      c = custom_getopt_long (argc, argv, "hVclwt:", long_options, &option_index);
 
       optarg = custom_optarg;
       optind = custom_optind;
@@ -1112,6 +1143,18 @@ mwc_cmdline_parser_internal (
           if (update_arg((void *)&(args_info->words_flag), 0, &(args_info->words_given),
               &(local_args_info.words_given), optarg, 0, 0, ARG_FLAG,
               check_ambiguity, override, 1, 0, "words", 'w',
+              additional_error))
+            goto failure;
+        
+          break;
+        case 't':	/* Specify the number of threads to use..  */
+        
+        
+          if (update_arg( (void *)&(args_info->threads_arg), 
+               &(args_info->threads_orig), &(args_info->threads_given),
+              &(local_args_info.threads_given), optarg, 0, "0", ARG_INT,
+              check_ambiguity, override, 0, 0,
+              "threads", 't',
               additional_error))
             goto failure;
         
