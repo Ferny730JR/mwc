@@ -20,16 +20,13 @@ enable_testing()
 #=================================================================================================#
 
 set(MWC_PRIVATE_HEADERS
-	source/mwc_cmdl.h)
-
-set(RNAF_SOURCES
-	source/rnaf.c
-	source/memory_utils.c
-	source/string_utils.c)
+	source/mwc_cmdl.h
+    source/parallel_helpers.h)
 
 add_executable(mwc
     source/mwc.c
-    source/mwc_cmdl.c)
+    source/mwc_cmdl.c
+    source/parallel_helpers.c)
 
 if(NOT SKIP_INSTALL_ALL)
     install(TARGETS mwc
