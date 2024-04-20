@@ -1,0 +1,32 @@
+package "mwc - Multithreaded Word Count"
+
+purpose "Count the number of lines, words, and characters in a file."
+
+usage "mwc [OPTIONS] [<file1>] [<file2>]..."
+
+version "1.0"
+
+args "--file-name=mwc_cmdl --include-getopt --default-optional --unamed-opts --func-name=mwc_cmdline_parser --arg-struct-name=mwc_args_info"
+
+description "mwc is a C utility program designed to efficiently count the number of lines, words, and\
+ characters contained in a file, or from standard input, to standard output. A line is defined as the\
+ number of newline character + 1. A word is defined as a string delimited by whitespace. If multiple\
+ files are provided, a line containing the counts of the file is outputed to a separate line in\
+ standard output, with the specified filename.
+This program is heavily inspired by the \"wc\" utility. It is not meant as a replacement or improvement,\
+ but rather just as a personal exercise for multithreading and concurrency."
+
+option "characters" c
+"Count the number of bytes in each input file, and write it to standard output."
+flag
+off
+
+option "lines" l
+"Count the number of lines in each input file, and write it to standard output."
+flag
+off
+
+option "words" w
+"Count the number of words in each input file, and write it to standard output."
+flag
+off
