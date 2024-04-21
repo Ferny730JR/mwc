@@ -212,6 +212,7 @@ count_file(char *filename, struct options opt)
         tdata[i].char_result = 0;
         tdata[i].line_result = 0;
         tdata[i].word_result = 0;
+        tdata[i].carry = false;
         pthread_create(&ctids[i], NULL, consumer, (void *)&tdata[i]);
     }
 
@@ -279,6 +280,7 @@ producer(void *arg)
     }
 
 	/* Keep reading from file, and passing to consumers */
+    bool next_carry = false;
 	while(true) {
 		/* Find a consumer which is not busy */
 		do {
@@ -292,6 +294,11 @@ producer(void *arg)
 		size_t res = fread(data[consumer_id], sizeof(char), BUFFER_SIZE, file);
 		pdata->tdata[consumer_id].num_elements = res;
 		pdata->tdata[consumer_id].busy = true;
+        if(pdata->tdata[consumer_id].count_words) {
+            pdata->tdata[consumer_id].carry = next_carry;
+            next_carry = !isspace(data[consumer_id][res-1]);
+        }
+        
 
 		/* If end of file, finish producing */
 		if(feof(file)) {
@@ -321,6 +328,9 @@ count_buffer(char *buffer, consumer_data *tdata)
             if(isspace(buffer[i])) { in_word = false; }
             else if(!in_word) { tdata->word_result++; in_word = true; }
         }
+    }
+    if(tdata->count_words && tdata->carry && !isspace(buffer[0])) {
+        tdata->word_result--;
     }
 }
 
