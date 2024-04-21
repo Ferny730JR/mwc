@@ -32,7 +32,8 @@ typedef struct consumer_data {
 	atomic_bool isAlive;          /**< Determines if the thread is alive. */
 	atomic_bool busy;             /**< Checks if thread is busy computing. */
 
-    bool count_words;
+    bool count_words;             /** Counting words option */
+    bool carry;                   /** Check if carrying the word of previous buffer */
 
     unsigned long line_result;    /**< Number of lines the thread counted. */
     unsigned long char_result;    /**< Number of chars the thread counted. */
@@ -44,6 +45,7 @@ typedef struct producer_data {
 	int num_threads;              /**< Number of threads there are. */
 	char *input_file;             /**< Name of file to process */
 	consumer_data *tdata;         /**< Consumer thread information. */
+    bool encountered_error;       /**< If producer encountered error. */
 } producer_data;
 
 /* Struct to hold file count information */
@@ -51,6 +53,7 @@ typedef struct count_information {
     unsigned long total_chars;
     unsigned long total_lines;
     unsigned long total_words;
+    bool encountered_error;
 } count_information;
 
 /* Function Declarations */
@@ -140,6 +143,10 @@ main(int argc, char *argv[])
 
     for(int i = 0; i < num_input; i++) {
         count_information count_info = count_file(input_files[i], opt);
+        if(count_info.encountered_error) {
+            free(input_files[i]);
+            continue;
+        }
         if(opt.count_words) {
             printf("%lu ",count_info.total_words);
         }
@@ -161,7 +168,7 @@ main(int argc, char *argv[])
 static count_information
 count_file(char *filename, struct options opt)
 {
-    count_information count_info = {.total_chars = 0, .total_lines = 0, .total_words = 0};
+    count_information count_info = {.total_chars = 0, .total_lines = 0, .total_words = 0, .encountered_error = false};
     pthread_t ptid, *ctids; /* producer & consumer threads, respectively */
 
 	/* Clear existing semaphores */
@@ -191,10 +198,8 @@ count_file(char *filename, struct options opt)
 	consumer_data *tdata = (consumer_data *)malloc(opt.num_threads * sizeof(consumer_data));
 	producer_data pdata = {.input_file=filename,
 	                       .num_threads=opt.num_threads,
-						   .tdata = tdata};
-
-    /* Create producer thread */
-    pthread_create(&ptid, NULL, producer, (void *)&pdata);
+						   .tdata = tdata,
+                           .encountered_error = false};
 
     /* Create consumer threads */
     ctids = (pthread_t *)malloc(opt.num_threads * sizeof(pthread_t));
@@ -203,8 +208,15 @@ count_file(char *filename, struct options opt)
 		tdata[i].isAlive = true;
 		tdata[i].busy = false;
         tdata[i].count_words = opt.count_words;
+        tdata[i].num_elements = 0;
+        tdata[i].char_result = 0;
+        tdata[i].line_result = 0;
+        tdata[i].word_result = 0;
         pthread_create(&ctids[i], NULL, consumer, (void *)&tdata[i]);
     }
+
+    /* Create producer thread */
+    pthread_create(&ptid, NULL, producer, (void *)&pdata);
 
     /* Join producer thread */
     pthread_join(ptid, NULL);
@@ -215,6 +227,7 @@ count_file(char *filename, struct options opt)
     }
 
 	/* Join results of all threads */
+    count_info.encountered_error = pdata.encountered_error;
     for (int i = 0; i < opt.num_threads; i++) {
         count_info.total_lines += tdata[i].line_result;
         count_info.total_chars += tdata[i].char_result;
@@ -250,7 +263,18 @@ producer(void *arg)
 	/* Open file and check for errors */
 	FILE *file = fopen(pdata->input_file, "r");
 	if (file == NULL) {
-        perror("Error opening file");
+        /* Couldn't open file, so kill consumers */
+        kill_consumers(pdata, full);
+
+        /* Signal to main thread that error was encountered */
+        pdata->encountered_error = true;
+
+        /* Print error message to stdout */
+        char error_output[100];
+        sprintf(error_output, "mwc: %s: open", pdata->input_file);
+        perror(error_output);
+
+        /* Return and kill producer */
         return NULL;
     }
 
@@ -271,6 +295,7 @@ producer(void *arg)
 
 		/* If end of file, finish producing */
 		if(feof(file)) {
+            fclose(file);
 			kill_consumers(pdata, full);
 			break;
 		}
@@ -298,6 +323,7 @@ count_buffer(char *buffer, consumer_data *tdata)
         }
     }
 }
+
 
 static void *
 consumer(void *arg)
