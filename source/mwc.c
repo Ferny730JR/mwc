@@ -132,11 +132,6 @@ main(int argc, char *argv[])
 
     toggle_options(&opt);
 
-    printf("Max user threads: %u\n",opt.num_threads);
-    for(int i=0; i<num_input; i++) {
-        printf("Input %d: \"%s\"\n",i, input_files[i]);
-    }
-
     mwc_cmdline_parser_free(&args_info);
 
     /*==========================================
@@ -251,7 +246,6 @@ producer(void *arg)
     /* Extract arguments and initialize variables */
 	producer_data *pdata = (producer_data *)arg;
     int consumer_id = -1;
-    printf("Producer created\n");
 
 	/* Open file and check for errors */
 	FILE *file = fopen(pdata->input_file, "r");
