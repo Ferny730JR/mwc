@@ -21,7 +21,7 @@
 
 int 
 num_proc_cores(int  *num_cores,
-                   int  *num_cores_conf) 
+               int  *num_cores_conf) 
 {
   long        nprocs      = -1;
   long        nprocs_max  = -1;
