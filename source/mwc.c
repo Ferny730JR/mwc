@@ -361,7 +361,7 @@ count_buffer(char *buffer, consumer_data *tdata)
             else if(!in_word) { tdata->word_result++; in_word = true; }
         }
     }
-    if(tdata->count_words && tdata->carry && !isspace(buffer[0])) {
+    if(tdata->count_words && tdata->num_elements && tdata->carry && !isspace(buffer[0])) {
         tdata->word_result--;
     }
 }
