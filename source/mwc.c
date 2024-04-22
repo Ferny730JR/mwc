@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/stat.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <stdatomic.h>
@@ -57,8 +58,11 @@ typedef struct count_information {
 } count_information;
 
 /* Function Declarations */
-static count_information
-count_file(char *filename, struct options opt);
+static void
+count_chars(char *input_file, count_information *count_info);
+
+static void
+count_file(char *filename, count_information *count_info, struct options opt);
 
 static void *
 producer(void *arg);
@@ -142,7 +146,13 @@ main(int argc, char *argv[])
     ==========================================*/
 
     for(int i = 0; i < num_input; i++) {
-        count_information count_info = count_file(input_files[i], opt);
+        count_information count_info = {.total_chars=0, .total_lines=0, .total_words=0, .encountered_error=false};
+        if(opt.count_chars) {
+            count_chars(input_files[i], &count_info);
+        }
+        if(opt.count_lines || opt.count_words) {
+            count_file(input_files[i], &count_info, opt);
+        }
         if(count_info.encountered_error) {
             free(input_files[i]);
             continue;
@@ -165,11 +175,36 @@ main(int argc, char *argv[])
 }
 
 
-static count_information
-count_file(char *filename, struct options opt)
+static void
+count_chars(char *input_file, count_information *count_info)
 {
-    count_information count_info = {.total_chars = 0, .total_lines = 0, .total_words = 0, .encountered_error = false};
-    pthread_t ptid, *ctids; /* producer & consumer threads, respectively */
+    struct stat sb;
+
+    if(stat(input_file, &sb) == -1) {
+        /* Signal to main thread that error was encountered */
+        count_info->encountered_error = true;
+
+        /* Print error message to stdout */
+        char error_output[1000];
+        sprintf(error_output, "mwc: %s: open", input_file);
+        perror(error_output);
+    } else {
+        count_info->encountered_error = false;
+        count_info->total_chars = (long)sb.st_size;
+    }
+}
+
+
+static void
+count_file(char *filename, count_information *count_info, struct options opt)
+{
+    /* Pre processing, if an error was encountered earlier dont proceed */
+    if(count_info->encountered_error) {
+        return;
+    }
+
+    /* producer & consumer threads, respectively */
+    pthread_t ptid, *ctids;
 
 	/* Clear existing semaphores */
 	sem_unlink("empty_sem");
@@ -228,11 +263,11 @@ count_file(char *filename, struct options opt)
     }
 
 	/* Join results of all threads */
-    count_info.encountered_error = pdata.encountered_error;
+    count_info->encountered_error = pdata.encountered_error;
     for (int i = 0; i < opt.num_threads; i++) {
-        count_info.total_lines += tdata[i].line_result;
-        count_info.total_chars += tdata[i].char_result;
-        count_info.total_words += tdata[i].word_result;
+        count_info->total_lines += tdata[i].line_result;
+        count_info->total_chars += tdata[i].char_result;
+        count_info->total_words += tdata[i].word_result;
     }
 
     /* Cleanup */
@@ -249,8 +284,6 @@ count_file(char *filename, struct options opt)
     free(data);
     free(ctids);
     free(tdata);
-
-    return count_info;
 }
 
 
@@ -271,8 +304,8 @@ producer(void *arg)
         pdata->encountered_error = true;
 
         /* Print error message to stdout */
-        char error_output[100];
-        sprintf(error_output, "mwc: %s: open", pdata->input_file);
+        char error_output[1000];
+        snprintf(error_output, 1000, "mwc: %s: open", pdata->input_file);
         perror(error_output);
 
         /* Return and kill producer */
@@ -320,7 +353,6 @@ count_buffer(char *buffer, consumer_data *tdata)
 {
     bool in_word = false;
     for(unsigned long i = 0; i < tdata->num_elements; i++) {
-        tdata->char_result++;
         if(buffer[i] == '\n') {
             tdata->line_result++;
         }
